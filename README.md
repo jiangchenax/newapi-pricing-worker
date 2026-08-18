@@ -1,136 +1,110 @@
-# New API Pricing Worker V7.3
+# New API Pricing Worker V7.4
 
-本版只处理已经确认的项目。
+## 1. 修复 V7.3 详情框跑到左上角
 
-## 1. 修复 0ms TTFT 折线图
+V7.3 的问题来自两套定位同时存在：
 
-旧逻辑：
+- 原生 `<dialog>.showModal()`
+- JS 手写 `style.left / style.top`
+- CSS 又覆盖 `margin / inset`
 
-只要 `avg_ttft_ms` 字段存在，即使整条序列都是 `0`，
-也会选择“平均首 Token 延迟”。
+V7.4 删除 JS 坐标定位。
 
-结果可能出现：
+现在 JS 只读取：
 
-- 上方平均延迟 1.92s
-- 下方首 Token 延迟趋势 0~20ms
-- 实际所有 TTFT 点都是 0
+`header.getBoundingClientRect().bottom`
 
-V7.3：
+并写入：
 
-只有：
+`--moss-dialog-safe-top`
 
-`avg_ttft_ms > 0`
+CSS 负责全部定位。
 
-才视为有效 TTFT 趋势点。
+桌面规则：
 
-如果 TTFT：
-- 全 0
-- null
-- 没有有效正值
+- Header 下方作为可用区域顶部
+- 页面底部保留 14px
+- 水平居中
+- 垂直居中于 Header 以下可用区域
+- 最大宽度 820px
+- 最大高度 min(82vh, 可用高度, 820px)
 
-自动切换到：
+使用：
 
-`avg_latency_ms`
+- top
+- right: 0
+- bottom
+- left: 0
+- height: fit-content
+- margin: auto
 
-图表标题也同步变为：
+不再写：
 
-`平均延迟`
+- JS left
+- JS top
+- JS width
+- JS max-height
 
-
-## 2. 详情框扩大
-
-桌面：
-
-- 最大宽度约 820px
-- 最大高度约 82vh
-- 同时受 Header 安全区和页面底部 14px 安全距离限制
-
-性能 Tab 可以在一屏内看到更多折线图。
-
-
-## 3. 去掉折线图上方重复 TPS 小卡
-
-删除类似：
-
-`ssvip / 19.25 t/s`
-
-因为相同内容已经在：
-
-`各分组性能`
-
-表格中展示。
-
-保留：
-- 多分组图例
-- 折线图
+同时打开详情时会主动清理旧 SPA 环境残留的 inline left/top。
 
 
-## 4. 导航栏和整个页面统一变暗
+## 2. 保留真正的全屏 Modal 遮罩
 
-详情容器由普通 `<div>` 改为：
+继续使用：
 
 `<dialog>`
-
-并使用浏览器原生：
-
-`dialog.showModal()`
-
-以及：
-
+`showModal()`
 `dialog::backdrop`
 
-因此暗层属于浏览器 Top Layer，
-会覆盖：
+因此：
 
-- 顶部导航栏
-- 筛选
+- 导航栏
 - 搜索
+- 筛选
 - 模型列表
-- 页面其他区域
 
-只有模型详情保持正常亮度。
+会统一变暗。
 
-不再使用 `100vmax box-shadow` 模拟遮罩。
-
-点击详情框外的 backdrop 可以关闭；
-ESC 也可以关闭。
+详情框保持正常亮度。
 
 
-## 5. 图标优先模型本身品牌
+## 3. “模型广场 / 71 个模型”重新设计
 
-图标规则调整为：
+左上角现在变成一个紧凑的工作台身份组件：
 
-1. New API 真原生图标
-2. 从“模型名称”识别模型家族
-3. New API icon/vendor hint
-4. Provider/运行平台品牌
-5. fallback
+- 30px 四宫格模型图标
+- “模型广场”主标题
+- “71 个模型”柔和数量胶囊
+- 最右边一个小型同步状态灯
 
-例如：
+视觉材料和：
 
-`cerebras/gemma-4-31b`
-→ Gemma Logo
+- 搜索框
+- 左侧筛选
+- 模型列表
 
-而不是：
-→ Cerebras Logo
+保持一致：
 
-`cerebras/gpt-oss-120b`
-→ OpenAI / GPT Logo
+- 轻玻璃
+- 低对比边框
+- 小圆角
+- 极轻阴影
 
-`tianyi_deepseek_v4`
-→ DeepSeek Logo
-
-`nvidia/nemotron-*`
-→ NVIDIA Logo
-
-也就是说：
-
-**模型品牌优先，运行平台品牌只作为无法识别模型家族时的 fallback。**
+不会做成大型 Hero，也不加入营销文案。
 
 
-## 未修改
+## 4. V7.3 已确认功能全部保留
 
-按要求，本版不再修改主列表 24h 状态文案逻辑。
+- 概览 / 性能 / API 三 Tab
+- TTFT 全 0 自动回退平均延迟
+- 删除重复 TPS 小卡
+- 详情框大尺寸
+- 模型本身品牌 Logo 优先
+- 图标单状态渲染
+- Lobe / Simple Icons 多源验证
+- 严格模型资料匹配
+- New API / Models.dev / OpenRouter / LiteLLM
+- 24h 性能折线图
 
 
 ## Route
@@ -149,4 +123,4 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-`x-moss-pricing-skin: active-v7.3-performance-modal-model-brand`
+`x-moss-pricing-skin: active-v7.4-stable-dialog-market-heading`
