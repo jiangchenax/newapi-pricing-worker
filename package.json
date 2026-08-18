@@ -1,0 +1,10 @@
+{
+  "name": "moss-newapi-pricing-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "npx wrangler@latest deploy",
+    "dev": "npx wrangler@latest dev"
+  }
+}

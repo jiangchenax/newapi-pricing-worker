@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "moss-newapi-pricing",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-17",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "newapi.mossao.com/pricing*",
+      "zone_name": "mossao.com"
+    }
+  ]
+}
