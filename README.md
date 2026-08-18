@@ -1,109 +1,158 @@
-# New API Pricing Worker V7.8
+# New API Pricing Worker V8 Clean UI
 
-V7.8 修复 V7.7 把内容缩到左侧、右侧出现大面积空白的问题。
+V8 不再基于 V7.x 继续追加覆盖 CSS，而是保留稳定的数据逻辑，重新构建一套干净的 UI 样式和详情表现层。
 
-## 1. 概览采用统一内容宽度
+## 一、全面重构范围
 
-不再对整个：
+保留：
 
-- 调用 ID
-- 关键规格
-- 模型信息
+- `/api/pricing`
+- `/api/perf-metrics`
+- Models.dev
+- OpenRouter
+- LiteLLM
+- New API `model_mapping`
+- 严格模型资料匹配
+- 模型品牌 Logo 优先
+- Lobe / Simple Icons 多源验证
+- 搜索 / 筛选 / 排序
+- SPA 路由
+- 24h 性能图
+- 主列表状态逻辑
 
-使用 `width: max-content`。
+清理：
 
-概览内容统一使用整个可用内容区。
+- V4～V7.8 历史详情 CSS 覆盖链
+- 多代 dialog width / inset / margin 覆盖
+- 旧 drawer / inline detail CSS
+- 旧 detailRow / metricCard / inlineDetail 等前端死代码
 
-
-## 2. 调用 ID / 上游模型 / 资料模型
-
-取消独立大框和等宽单元格。
-
-现在是一条紧凑元数据栏：
-
-```text
-调用 ID  blian_deepseek_v4_pro  |  资料模型  deepseek/deepseek-v4-pro
-```
-
-存在明确上游模型时自动增加：
-
-```text
-| 上游模型 xxx
-```
-
-没有“调用 ID 自己占一大格”的问题。
+现在只保留一份 V8 `GLOBAL_CSS`。
 
 
-## 3. 关键规格
+## 二、详情 Modal
 
-只有一个完整的外框：
-
-```text
-上下文 1,000,000     最大输入 1,000,000     最大输出 384,000
-```
-
-三组数据通过 `justify-content: space-between` 分布到整行。
-
-最后的“最大输出 384,000”靠近右侧，后面只剩正常的外框 padding，
-不再存在一整张最大输出卡留下的空白。
-
-
-## 4. 模型信息
-
-模型信息重新铺满概览内容宽度：
-
-```text
-知识截止 2025-05       发布日期 2026-04-24
-最近更新 2026-04-24    输入模态 text
-输出模态 text           开放权重 支持
-```
-
-结构是真正的：
-
-`label | value | label | value`
-
-而不是两个独立 50% 卡片。
-
-
-## 5. 三个 Tab 改成紧凑 segmented control
-
-桌面不再横跨整个弹窗。
-
-三个按钮各约 122px：
-
-```text
-            [ 概览 ] [ 性能 ] [ API ]
-```
-
-移动端自动恢复三等分。
-
-
-## 6. Modal 宽度
+宽度：
 
 - 概览：760px
 - 性能：900px
 - API：700px
 
-切换 Tab 后仍由原生 dialog 居中。
+Header：
+
+- 约 68px
+- 模型 Logo / 调用模型 / Provider
+- 关闭按钮
+
+Tab：
+
+- 380px 紧凑 segmented control
+- 居中
+- 不再横跨整个弹窗
 
 
-## 7. 保留
+## 三、模型摘要区
 
-- 字号不变
-- text 保持英文
-- chat 保持英文
-- Temperature 保持英文
-- 开放权重保持 支持 / 不支持
-- 更多信息默认收起
-- 模型品牌 Logo
-- 原生 dialog / backdrop
-- 24h 性能
-- TTFT 0 回退
-- 严格资料匹配
+旧版：
+
+```text
+Grok 4.6 [精确匹配]
+
+xAI's frontier model ...
+
+调用 IDgrok-4.6
+资料模型xai/grok-4.6
+```
+
+V8：
+
+```text
+Grok 4.6                              [精确匹配]
+
+xAI's frontier model for long-running agents,
+coding, knowledge work, and visual projects.
+
+┌──────────────────────────────────────────────┐
+│ 调用 ID  grok-4.6 │ 资料模型  xai/grok-4.6 │
+└──────────────────────────────────────────────┘
+```
+
+说明文字最大阅读宽度 620px。
+
+元数据行只使用一个轻背景，不再做两张大字段卡。
+
+
+## 四、关键规格
+
+V8 只保留一个统一规格栏：
+
+```text
+┌──────────────────────────────────────────────────────┐
+│ 上下文 500K │ 最大输入 500K │ 最大输出 500K          │
+└──────────────────────────────────────────────────────┘
+```
+
+三个区域等分，内部 label + value 居中排列，并有分隔线。
+
+不再使用 `justify-content: space-between` 把三组数据推到三个极端。
+
+
+## 五、模型信息
+
+改成 3 列 × 2 行的紧凑事实表：
+
+```text
+知识截止 2026-02-01 | 发布日期 2026-08-12 | 最近更新 2026-08-12
+输入模态 text,image | 输出模态 text       | 开放权重 不支持
+```
+
+更充分利用 760px 概览宽度。
+
+
+## 六、能力 / 更多信息
+
+能力保留现有小胶囊。
+
+“更多信息”：
+
+- 默认收起
+- 不再有 100% 宽的大外框
+- 展开后直接显示实际内容宽度的小型信息项
+
+
+## 七、性能
+
+KPI 卡高度压到约 90px。
+
+分组表：
+
+`平均首 TOKEN 延迟`
+改为：
+
+`平均首 Token 延迟`
+
+折线图逻辑不变，图高约 250px。
+
+
+## 八、主列表
+
+重新整理为单一 V8 样式：
+
 - 模型广场标题 UI
+- 搜索
+- 筛选
+- 高密度模型表
+- 模型品牌图标
+- 24h 状态
+- 分组标签
+- 详情 / 复制
+
+不再依赖多代样式叠加。
 
 
 ## Route
+
+保持：
 
 `newapi.mossao.com/pricing*`
 
@@ -117,4 +166,14 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-`x-moss-pricing-skin: active-v7.8-unified-overview-layout`
+`x-moss-pricing-skin: active-v8-clean-ui`
+
+
+## 代码检查
+
+项目生成时已执行：
+
+- Worker `node --check`
+- 注入浏览器 CLIENT_JS `node --check`
+- 结构检查
+- 确认不存在 V7.1～V7.8 CSS 版本块
