@@ -1,172 +1,199 @@
-# New API Pricing Worker V7
+# New API Pricing Worker V7.1
 
-## 1. 详情改成三个 Tab
+V7.1 一次处理四个问题。
 
-### 概览
-- 调用 ID
-- 实际上游模型（仅明确映射时）
-- 资料模型
-- 模型描述
-- 上下文
-- 最大输入 / 最大输出
-- 知识截止 / 发布日期
-- 输入 / 输出模态
-- 推理 / 工具调用 / 结构化输出等能力
-- 数据来源
+## 1. 三个 Tab 背景统一
 
-### 性能
-- TPS
-- 平均延迟
-- 成功率
-- 各分组性能
-- 最近 24 小时首 Token 延迟折线图
-- 数据来自 New API `/api/perf-metrics?model=...&hours=24`
+详情内部统一使用同一个 `detail-surface`：
 
-### API
-- 本站调用 ID
-- 实际上游模型（有明确映射时）
-- 支持端点
-- 输入 / 输出模态
-- 一键复制
+- 标题区
+- Tab 区
+- Tab 内容区
+
+Tab 整栏不再单独使用一块白底。
+只有当前选中的 Tab 有很轻的局部高亮。
 
 
-# 2. 图标补全
+## 2. 详情只保留一个滚动容器
 
-优先级：
+以前：
 
-1. New API 原生模型 / vendor 图标
-2. 根据明确 Provider / 模型族识别品牌
-3. Lobe Icons 彩色 PNG
-4. Lobe Icons 普通 PNG
-5. 本地柔和彩色文字 fallback
+`model-detail-popover`
+→ `detail-panel-scroll`
+→ 双重高度 / 双重滚动
 
-Worker 新增：
+现在：
 
-`/pricing-icon/<slug>.png`
+`model-detail-popover`
+→ 唯一滚动容器
 
-并代理缓存 Lobe Icons。
+`detail-panel-scroll`
+只负责结构，不再滚动。
 
-例如：
-- agnes → Agnes AI
-- deepseek → DeepSeek
-- gpt/openai → OpenAI
-- claude → Claude
-- gemini/google → Gemini
-- qwen → Qwen
-- glm → ChatGLM
-- kimi → Kimi
-- minimax → MiniMax
-- grok → Grok
-- llama/meta → Meta
-- mistral → Mistral
-- doubao → Doubao
+每次：
+
+- 异步详情加载完成
+- 性能数据加载完成
+- 切换概览 / 性能 / API
+
+都会重新计算详情框位置和可用高度。
+
+详情底部额外保留 34px 安全空间，避免最后一块内容滑不到。
 
 
-# 3. 修复错误模型资料引用
+## 3. 主列表 24h 状态和性能 Tab 使用同一接口
 
-V6 的问题：
+不再用原 New API DOM 中抓到的成功率 / 延迟 / TPS 作为主列表状态。
 
-`agnes-2.0-flash`
+现在统一：
 
-曾可能被拆成：
+`GET /api/perf-metrics?model=<model>&hours=24`
 
-`2.0-flash`
+同一份数据进入：
 
-再误撞到：
+`summarizePerfResult()`
 
-`google/gemini-2.0-flash`
+然后同时用于：
 
-V7 完全禁止这种“纯尾部版本字段”匹配。
+- 模型列表成功率
+- 模型列表延迟
+- 模型列表吞吐量
+- 性能 Tab 顶部三个统计卡
 
+因此不会再出现：
 
-## V7 严格匹配规则
+主列表：暂无 24h 状态
+性能 Tab：有 TPS / 延迟 / 成功率
 
-允许：
+这种矛盾。
 
-### A. 完整模型名精确匹配
+### 加载策略
 
-`agnes-2.0-flash`
-→ `agnes-2.0-flash`
+不会页面打开瞬间并发 71 个请求。
 
-### B. New API 显式 model_mapping
-
-优先级最高。
-
-### C. Worker 人工别名
-
-可配置：
-
-`MODEL_METADATA_ALIASES_JSON`
-
-例如：
-
-```json
-{
-  "my_private_name": "provider/real-model"
-}
-```
-
-### D. 已知模型族锚点后的完整字段
-
-`tianyi_deepseek_v4`
-→ `deepseek-v4`
-
-因为 `deepseek` 是明确模型族锚点。
-
-`blian_deepseek_v4_pro`
-→ `deepseek-v4-pro`
-
-允许。
-
-但：
-
-`agnes-2.0-flash`
-不会产生：
-`2.0-flash`
-
-因此不能再匹配 Gemini。
+- IntersectionObserver 优先加载当前可见模型
+- 上下 420px 范围提前加载
+- 最大并发 5
+- 1.8 秒后后台慢慢补齐其余模型
+- `loadPerfMetrics()` 保留浏览器内 Promise 缓存
 
 
-# 4. 匹配测试
+## 4. 图标系统重做
 
-预期：
+### 先判断原 New API 图标是不是“真图标”
 
-`agnes-2.0-flash`
-→ `["agnes-2-0-flash"]`
+现在只有以下内容才视为原生有效图标：
 
-`tianyi_deepseek_v4`
-→ `["tianyi-deepseek-v4","deepseek-v4"]`
+- `<img>`
+- `<svg>`
+- `<picture>`
+- `<canvas>`
+- URL background / mask
 
-`blian_deepseek_v4_pro`
-→ `["blian-deepseek-v4-pro","deepseek-v4-pro"]`
+纯文字：
 
+- A
+- B
+- C
+- AI
+- 首字母 Avatar
 
-# 5. 可选人工别名
-
-Cloudflare Worker 可加普通变量或 Secret：
-
-`MODEL_METADATA_ALIASES_JSON`
-
-例如：
-
-```json
-{
-  "tianyi_deepseek_v4": "deepseek-v4",
-  "my_gpt_alias": "openai/gpt-5"
-}
-```
-
-显式别名优先于自动名称解析，但低于 New API 自己的 `model_mapping`。
+全部视为“占位符”，继续进入图标补全链。
 
 
-# 6. Route
+### 图标解析链
+
+1. New API 真正的原生图标
+2. New API `model.icon / vendor_icon` 文本提示
+3. 模型名 / Provider 品牌识别
+4. Lobe Icons Static SVG
+5. Simple Icons 彩色 SVG
+6. 本地品牌文字 fallback
+
+浏览器统一请求：
+
+`/pricing-icon/<brand>.svg`
+
+Worker 服务器端解析，不让前端直接访问第三方 CDN。
+
+
+### Lobe Icons
+
+优先尝试：
+
+`<slug>-color.svg`
+
+失败后：
+
+`<slug>.svg`
+
+
+### Simple Icons
+
+Lobe 没有时再使用 Simple Icons 彩色 CDN。
+
+
+### 已增加识别
+
+包括但不限于：
+
+- Agnes
+- DeepSeek
+- OpenAI / GPT
+- Claude / Anthropic
+- Gemini / Google
+- Gemma
+- Qwen
+- ChatGLM / Zhipu
+- Kimi / Moonshot
+- MiniMax
+- Grok / xAI
+- Meta / Llama
+- Mistral
+- Doubao
+- Wenxin / Baidu
+- MiMo / Xiaomi
+- Yi
+- Cohere
+- Ollama
+- Hunyuan
+- Groq
+- OpenRouter
+- Perplexity
+- Hugging Face
+- NVIDIA
+- Cerebras
+- SambaNova
+- Together
+- Fireworks
+- Replicate
+- SiliconCloud
+- Bedrock / AWS
+- Azure AI
+
+
+## 保留 V7
+
+- 概览 / 性能 / API 三 Tab
+- 严格模型资料匹配
+- agnes-2.0-flash 不会误配 Gemini
+- tianyi_deepseek_v4 → deepseek-v4
+- Models.dev
+- OpenRouter
+- LiteLLM
+- New API model_mapping
+- 24h 折线图
+- 原生彩色图标优先
+
+
+## Route
 
 保持：
 
 `newapi.mossao.com/pricing*`
 
 
-# 7. 验证
+## 验证
 
 ```bash
 curl -sSI https://newapi.mossao.com/pricing \
@@ -175,27 +202,23 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-`x-moss-pricing-skin: active-v7-tabs-icons-strict-metadata`
+`x-moss-pricing-skin: active-v7.1-unified-tabs-scroll-perf-icons`
 
 
-# 8. 测试错误引用是否消失
+## 单独测试图标
 
 ```bash
-curl -sS \
-'https://newapi.mossao.com/pricing-meta?model=agnes-2.0-flash'
+curl -sSI \
+  https://newapi.mossao.com/pricing-icon/agnes.svg
 ```
 
-重点看：
+以及：
 
-- `resolution.suffix_candidates`
-- `resolution.match_basis`
-- `source_matches`
-- `metadata.id`
+```bash
+curl -sSI \
+  https://newapi.mossao.com/pricing-icon/deepseek.svg
+```
 
-其中 `suffix_candidates` 不应再出现：
+如果解析成功，应返回：
 
-`2-0-flash`
-
-并且 `metadata.id` 不允许因为尾部相似而变成：
-
-`google/gemini-2.0-flash`
+`content-type: image/svg+xml`
