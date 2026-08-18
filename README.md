@@ -1,58 +1,70 @@
-# New API Pricing Worker V3
+# New API Pricing Worker V4
 
-本版解决 V2.2 的五个结构问题：
+## 这版解决什么
 
-1. 恢复模型图标
-   - 优先使用 model.icon / model.vendor_icon / vendor.icon
-   - Worker 通过 /pricing-icon/*.svg 做同源图标代理
-   - 图标失败自动回退首字母
+1. 图标不再重绘
+- 不再请求第三方图标库
+- 不再自己猜供应商图标
+- Worker 前端会让原 New API 模型广场在后台逐页切换
+- 逐模型复制原卡片中已经渲染好的 icon HTML
+- 因此颜色、图形、模型对应关系以 New API 原页面为准
 
-2. 详情不再跳转
-   - 详情按钮不修改 URL
-   - 当前模型广场内打开右侧详情抽屉
-   - 展示描述、价格、计费、状态、成功率、延迟、吞吐、分组、端点、上下文等
+2. 删除输入 / 输出 / 计费
+桌面表格只剩：
+- 模型
+- 最近 24 小时状态
+- 分组 / 标签
+- 操作
 
-3. 修复离开模型广场后覆盖层残留
-   - 监听 pushState / replaceState / popstate
-   - 额外 250ms 路由兜底检测
-   - 一旦 pathname 不是 /pricing，立即卸载 #moss-pricing-app
+3. 最近 24 小时状态不再直接调用 perf-metrics 接口
+- V3 调 /api/perf-metrics/summary?hours=24
+- 新版 v1 中这个接口存在 404 反馈，因此 V4 不再依赖它
+- V4 直接从原 New API 模型卡片中读取：
+  - 成功率
+  - 平均延迟
+  - 吞吐量
+- 自动逐页读取全部分页模型，再恢复原页面到第 1 页
 
-4. 恢复模型状态
-   - 从 /api/perf-metrics/summary?hours=24 读取
-   - 列表展示：正常 / 波动 / 异常 / 暂无状态
-   - 同时显示成功率、平均延迟、吞吐量
-   - 详情抽屉显示更完整指标
+4. 原页面不再能从顶部滚出来
+- pricing 激活时给 html/body 加 moss-pricing-v4-lock
+- html/body overflow: hidden
+- 原 main visibility:hidden
+- 新模型广场自己独立滚动
+- 离开 /pricing 后立即解除锁定并卸载覆盖层
 
-5. 重做阅读效率
-   - 桌面端改为高密度列表，而不是三列大卡片
-   - 列：模型 / 输入 / 输出 / 计费 / 状态 / 操作
-   - 左侧筛选继续保留
-   - 980px 以下自动转双列卡片
-   - 720px 以下单列
-
-仍然保持：
-- 全部模型一页展示
-- 不分页
-- Route 不变：newapi.mossao.com/pricing*
-- 不修改 Caddy
-- 不修改 New API Docker / 源码
+5. 详情仍在当前页面
+- 右侧抽屉
+- 不修改 URL
+- 不跳转
 
 
-部署后验证：
+## Route
+
+保持：
+
+newapi.mossao.com/pricing*
+
+不要重新添加 Route。
+
+
+## 部署验证
 
 curl -sSI https://newapi.mossao.com/pricing | grep -i x-moss-pricing-skin
 
 应返回：
 
-x-moss-pricing-skin: active-v3-icons-drawer-route-status-dense
+x-moss-pricing-skin: active-v4-native-icons-native-status-no-price-scroll-lock
 
 
-图标代理测试（部署后）：
+## 页面验证
 
-curl -sSI https://newapi.mossao.com/pricing-icon/openai.svg | head
+顶部会显示类似：
 
-应返回 200 且 Content-Type 为 image/svg+xml。
+已同步原生信息 71/71
 
+这表示 V4 已把原生模型卡片逐页读取完成。
 
-回滚：
-Cloudflare Worker → Deployments → 回退上一个版本即可。
+如果不是 71/71：
+- 先等 2~5 秒
+- 原生页面共有 4 页，V4 会在后台自动逐页读取
+- 全程原页面被隐藏，不会看到翻页过程
