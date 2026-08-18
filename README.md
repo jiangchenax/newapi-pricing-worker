@@ -1,44 +1,26 @@
-# MOSS New API Pricing Worker V2.1 FIXED
+# New API Pricing Worker V2.2
 
-本版修复 Wrangler 构建错误：
+本版按最新要求调整：
 
-```text
-Expected ";" but found "viewBox"
-src/index.js:539
-```
-
-根因：浏览器端 CLIENT_JS 被嵌入 Worker 的模板字符串时，
-内部 `<svg>` 使用的反引号模板字符串提前结束了外层模板。
-
-V2.1 已改为：
-- GLOBAL_CSS 使用安全 JSON 字符串字面量
-- CLIENT_JS 使用安全 JSON 字符串字面量
-- HTMLRewriter 注入时使用字符串拼接
-- 不再存在嵌套反引号冲突
-
-功能不变：
-- 全部模型单页展出
+- 删除顶部 UNIFIED AI GATEWAY / 大标题 / BASE URL / POST 标签整块
+- 保留筛选
+- 保留详情按钮
+- 保留复制按钮
+- 模型名、价格、筛选、按钮字号整体放大
+- 全部模型一页连续展示
 - 不分页
-- 从 /api/pricing 一次加载完整模型列表
-- 按供应商分组
-- 搜索
-- 模型 ID 复制
-- 覆盖原 pricing 内容，避免两套界面叠加
+- 桌面三列，较窄桌面两列，手机一列
+- 手机筛选改为可展开面板
+- 不改 Caddy / New API / Docker
 
-Route 保持：
+Route 继续使用：
 
-```text
 newapi.mossao.com/pricing*
-```
 
 部署后验证：
 
-```bash
 curl -sSI https://newapi.mossao.com/pricing | grep -i x-moss-pricing-skin
-```
 
 应返回：
 
-```text
-x-moss-pricing-skin: active-v2-all-models
-```
+x-moss-pricing-skin: active-v2.2-filter-detail-large-font
