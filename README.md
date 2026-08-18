@@ -1,48 +1,70 @@
-# New API Pricing Worker V9.1 — Continuity
+# New API Pricing Worker V9.2 — Opaque Continuity
 
-V9.1 只处理两个明确的视觉问题，并保留 V9 全部数据/性能逻辑。
+V9.2 修复 V9.1 新暴露出来的原版 New API 内容穿透问题。
 
-## 1. Header → 模型广场背景连续
+## 现象
 
-V9 仍然让 `#moss-pricing-app` 自己绘制页面背景，因此 New API Header 下方仍然会形成一条新背景边界。
+V9.1 为了让 Header → 模型广场背景连续，把：
 
-V9.1 改成：
+`#moss-pricing-app`
 
-- `body` 绘制整个 Pricing 页统一背景
-- `#moss-pricing-app` 完全透明
-- Header 下方不再重新起一块底色
+改成了透明。
 
-亮色背景使用与当前 New API Header 实际视觉匹配的蓝 → 白 → 青水平渐变。
+结果原版 New API Pricing DOM 虽然大部分被隐藏，但仍有部分原生页面元素位于 CSS 隐藏范围之外，因此会从透明模型广场下面穿透出来。
 
-因此从 Logo 所在顶部一直到模型广场，使用同一张连续画布。
+截图中间出现的巨大黑色“模型广场”文字就是这个问题。
 
-详情背景仍然完全独立：
+## V9.2 方案
 
-- page: body continuous canvas
-- detail: `--detail-bg`
+不再：
 
-二者互不影响。
+`Header 背景 + 透明 Pricing`
 
-## 2. 排序菜单压缩
+而改成：
 
-排序 Trigger 继续与搜索框对齐，不改变顶部主网格。
+```text
+body
+  └─ viewport-fixed page canvas
 
-菜单改为：
+#moss-pricing-app
+  └─ 同一份 viewport-fixed page canvas
+```
 
-- 宽度 = Trigger 宽度
-- menu padding 3px
-- 圆角 9px
-- option 高度 30px
-- option 圆角 5px
-- 字号 9.5px
-- 选中状态使用极淡背景
-- 阴影减轻
-- 不再出现大面积浅紫选中块
+两者使用完全相同的：
 
-## 保留
+`--moss-page-canvas`
+
+并且都使用 `background-attachment: fixed` 的同一视口坐标。
+
+因此：
+
+- Header → 模型广场颜色继续连续
+- Pricing 根层重新变成实体画布
+- 原版 New API 内容无法穿透
+- 不会重新出现 V8 那种“第二块背景从 64px 处重新开始”的断层
+
+## 双保险
+
+原版：
+
+`body main:not(#moss-pricing-app)`
+
+现在同时使用：
+
+- `visibility:hidden`
+- `opacity:0`
+- `pointer-events:none`
+- `user-select:none`
+
+即使未来某个 panel 出现透明区域，原生 main 也不会显示。
+
+## 排序菜单
+
+V9.1 的紧凑自定义排序菜单保持不变。
+
+## 其他全部保留
 
 - 当前 65 个模型
-- V9 Clean Architecture
 - Fast Core
 - 单次 24h summary
 - 性能详情懒加载
@@ -53,9 +75,9 @@ V9.1 改成：
 - 资料模型在概览
 - 三列模型信息
 - 能力在概览
-- 自定义排序下拉
-- 搜索与模型列表同一网格
+- 搜索与列表同网格
+- V9 Clean Architecture
 
 ## 版本
 
-`x-moss-pricing-skin: active-v9.1-continuity`
+`x-moss-pricing-skin: active-v9.2-opaque-continuity`
