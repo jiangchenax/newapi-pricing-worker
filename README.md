@@ -1,252 +1,146 @@
-# New API Pricing Worker V7.2
+# New API Pricing Worker V7.3
 
-V7.2 专门修复 V7.1 的图标显示问题，同时完整保留 V7.1 的：
+本版只处理已经确认的项目。
 
-- 三个 Tab
-- 单滚动容器
-- 主列表 / 性能 Tab 统一 24h 性能数据
-- 严格模型资料匹配
-- Models.dev / OpenRouter / LiteLLM
-- New API model_mapping
-- 24h 折线图
+## 1. 修复 0ms TTFT 折线图
 
+旧逻辑：
 
-# 一、修复“破图 + fallback 同时显示”
+只要 `avg_ttft_ms` 字段存在，即使整条序列都是 `0`，
+也会选择“平均首 Token 延迟”。
 
-V7.1 的问题：
+结果可能出现：
 
-```text
-fallback 字母底板
-+
-<img 品牌 SVG>
-```
+- 上方平均延迟 1.92s
+- 下方首 Token 延迟趋势 0~20ms
+- 实际所有 TTFT 点都是 0
 
-两个节点会同时存在于界面。
+V7.3：
 
-如果图片失败：
-- 可能看到浏览器破图标记
-- 下面还露出 AG / NV 等 fallback
+只有：
 
-如果图片透明：
-- 可能看到 NVIDIA Logo
-- 后面仍透出紫色 fallback 背景
+`avg_ttft_ms > 0`
 
+才视为有效 TTFT 趋势点。
 
-## V7.2：单可见状态
+如果 TTFT：
+- 全 0
+- null
+- 没有有效正值
 
-远程品牌 `<img>` 初始状态：
+自动切换到：
 
-```text
-visibility: hidden
-opacity: 0
-```
+`avg_latency_ms`
 
-只有浏览器成功 `load` 后：
+图表标题也同步变为：
 
-1. 图片设置 `data-loaded=true`
-2. 品牌图片变为可见
-3. fallback 设置 hidden
-4. host 状态改为 `verified`
+`平均延迟`
 
-如果 `error`：
 
-1. 图片节点直接 remove
-2. fallback 保持显示
+## 2. 详情框扩大
 
-所以任意时刻用户只会看到：
+桌面：
 
-```text
-New API 真 Logo
-或
-已验证品牌 Logo
-或
-fallback
-```
+- 最大宽度约 820px
+- 最大高度约 82vh
+- 同时受 Header 安全区和页面底部 14px 安全距离限制
 
-不会再叠加。
+性能 Tab 可以在一屏内看到更多折线图。
 
 
-# 二、Worker 不再“HTTP 200 就当图标”
+## 3. 去掉折线图上方重复 TPS 小卡
 
-每个外部图标响应都经过正文校验：
+删除类似：
 
-- HTTP 必须成功
-- 不允许 `text/html`
-- 正文必须实际包含 `<svg ...>`
-- 正文结尾必须有 `</svg>`
-- 最大 1 MiB
-- HTML 错误页直接丢弃
+`ssvip / 19.25 t/s`
 
-只有验证通过才由 Worker 返回：
+因为相同内容已经在：
 
-```text
-Content-Type: image/svg+xml
-X-Content-Type-Options: nosniff
-```
+`各分组性能`
 
+表格中展示。
 
-# 三、图标来源链
+保留：
+- 多分组图例
+- 折线图
 
-## 1. New API 真正原生图标
 
-只有 `img / svg / picture / canvas / URL graphic`
-才视为有效。
+## 4. 导航栏和整个页面统一变暗
 
-A / B / C / 首字母文本仍视为占位符。
+详情容器由普通 `<div>` 改为：
 
+`<dialog>`
 
-## 2. Lobe Icons / unpkg
+并使用浏览器原生：
 
-按 Lobe 官方静态 SVG CDN：
+`dialog.showModal()`
 
-```text
-https://unpkg.com/@lobehub/icons-static-svg@latest/icons/[SLUG].svg
-```
+以及：
 
-每个品牌依次尝试：
+`dialog::backdrop`
 
-```text
-slug-color.svg
-slug.svg
-```
+因此暗层属于浏览器 Top Layer，
+会覆盖：
 
+- 顶部导航栏
+- 筛选
+- 搜索
+- 模型列表
+- 页面其他区域
 
-## 3. Lobe Icons / npmmirror
+只有模型详情保持正常亮度。
 
-作为第二 CDN：
+不再使用 `100vmax box-shadow` 模拟遮罩。
 
-```text
-https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/[SLUG].svg
-```
+点击详情框外的 backdrop 可以关闭；
+ESC 也可以关闭。
 
 
-## 4. Simple Icons 彩色 CDN
+## 5. 图标优先模型本身品牌
 
-```text
-https://cdn.simpleicons.org/[SLUG]
-```
+图标规则调整为：
 
+1. New API 真原生图标
+2. 从“模型名称”识别模型家族
+3. New API icon/vendor hint
+4. Provider/运行平台品牌
+5. fallback
 
-## 5. Simple Icons jsDelivr
+例如：
 
-```text
-https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/[SLUG].svg
-```
+`cerebras/gemma-4-31b`
+→ Gemma Logo
 
+而不是：
+→ Cerebras Logo
 
-## 6. 本地 fallback
+`cerebras/gpt-oss-120b`
+→ OpenAI / GPT Logo
 
-所有外部来源失败才显示：
+`tianyi_deepseek_v4`
+→ DeepSeek Logo
 
-- AG
-- DS
-- NV
-- OA
-- 或模型名稳定生成的两字母 fallback
+`nvidia/nemotron-*`
+→ NVIDIA Logo
 
-fallback 使用蓝紫柔和底色。
+也就是说：
 
-真实 Logo 不使用这个底板。
+**模型品牌优先，运行平台品牌只作为无法识别模型家族时的 fallback。**
 
 
-# 四、增加诊断 Header
+## 未修改
 
-测试：
+按要求，本版不再修改主列表 24h 状态文案逻辑。
 
-```bash
-curl -sSI \
-https://newapi.mossao.com/pricing-icon/agnes.svg
-```
 
-成功时可以看到：
-
-```text
-X-MOSS-Icon-Source: lobe-unpkg
-X-MOSS-Icon-Slug: agnes
-X-MOSS-Icon-Key: agnes
-```
-
-如果第一个 CDN 失败而第二个成功，可能是：
-
-```text
-X-MOSS-Icon-Source: lobe-npmmirror
-```
-
-Simple Icons 则可能显示：
-
-```text
-X-MOSS-Icon-Source: simpleicons-color
-```
-
-或：
-
-```text
-X-MOSS-Icon-Source: simpleicons-jsdelivr
-```
-
-所有来源都没有：
-
-```text
-HTTP 404
-X-MOSS-Icon-Source: fallback
-```
-
-浏览器不会显示破图，因为失败 `<img>` 会被移除。
-
-
-# 五、重点品牌候选
-
-Agnes：
-
-```text
-agnes
-agnesai
-```
-
-NVIDIA：
-
-```text
-nvidia
-```
-
-DeepSeek：
-
-```text
-deepseek
-```
-
-OpenAI：
-
-```text
-openai
-chatgpt
-```
-
-Gemini：
-
-```text
-gemini
-```
-
-Qwen：
-
-```text
-qwen
-```
-
-以及 V7.1 既有的大量品牌映射。
-
-
-# Route
+## Route
 
 保持：
 
-```text
-newapi.mossao.com/pricing*
-```
+`newapi.mossao.com/pricing*`
 
 
-# 验证 Worker
+## 验证
 
 ```bash
 curl -sSI https://newapi.mossao.com/pricing \
@@ -255,22 +149,4 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-```text
-x-moss-pricing-skin: active-v7.2-verified-single-state-icons
-```
-
-
-# 建议部署后先测试这三个
-
-```bash
-curl -sSI https://newapi.mossao.com/pricing-icon/agnes.svg
-curl -sSI https://newapi.mossao.com/pricing-icon/nvidia.svg
-curl -sSI https://newapi.mossao.com/pricing-icon/deepseek.svg
-```
-
-重点看：
-
-- HTTP 是否 200
-- `content-type`
-- `x-moss-icon-source`
-- `x-moss-icon-slug`
+`x-moss-pricing-skin: active-v7.3-performance-modal-model-brand`
