@@ -1,271 +1,87 @@
-# New API Pricing Worker V5
+# New API Pricing Worker V6
 
-## V5 的核心变化
+## V6 = UI 重构 + 多源详情 + 后缀字段匹配
 
-详情不再从 `/api/pricing` 空字段里“硬找信息”。
+### UI
+采用“轻玻璃模型工作台”：
+- Header 和内容共用一个浅蓝灰背景
+- 顶部不再套厚玻璃大框
+- 左侧筛选轻玻璃
+- 右侧模型列表为清晰高密度数据面
+- 搜索框左边缘与模型列表左边缘一致
+- 模型名称为第一视觉层级
+- 24h 状态压缩为第二层
+- 分组标签降低存在感
+- 详情继续使用小型玻璃浮层
 
-现在详情的数据链路是：
+### 资料来源
+详情会同时尝试：
 
-```text
-用户点击详情
-      ↓
-/pricing-meta?model=本站调用名
-      ↓
-1. 可选：服务器端读取 New API 渠道 model_mapping
-      ↓
-得到真实/候选上游模型名
-      ↓
-2. 查询 Models.dev models.json
-      ↓
-匹配模型规格
-      ↓
-返回：
-上下文 / 最大输入 / 最大输出
-知识截止 / 发布日期 / 最近更新
-输入输出模态
-推理 / Tool Call / Structured Output 等能力
-      ↓
-详情浮层明确列出信息来源
-```
+1. New API `/api/pricing`
+2. New API `model_mapping`（配置管理员 Secret 后）
+3. Models.dev
+4. OpenRouter Models API
+5. LiteLLM `model_prices_and_context_window.json`
+6. Models.dev 中存在时继续给出模型/实验室官方链接
 
-## 为什么这样做
+每个字段会记录实际采用的来源，例如：
 
-New API 当前 `/api/pricing` 主要是模型目录/计费数据，
-并不能稳定提供完整的 context / output / capabilities 元数据。
+- 上下文 `Models.dev`
+- 最大输出 `OpenRouter`
+- 最大输入 `LiteLLM`
+- 输入模态 `Models.dev+OpenRouter`
+- 工具调用 `Models.dev+OpenRouter+LiteLLM`
 
-New API 渠道配置本身支持：
+### 后缀字段匹配
 
-```text
-model_mapping
-```
+V6 不再要求完整调用名一致。
 
-即：
+例如：
 
-```text
-用户请求模型名
-→ 实际上游模型名
-```
+`tianyi_deepseek_v4`
 
-因此自定义名称例如：
+会依次形成：
 
-```text
-blian_deepseek_v4_pro
-```
+`tianyi-deepseek-v4`
+`deepseek-v4`
 
-不应该直接当成模型厂商真实 ID 去猜。
+因此如果资料库中存在：
 
-V5 优先读取本站 `model_mapping`；
-没有配置管理员 Secret 时，再使用名称后缀规则做保守匹配，例如：
+`deepseek/deepseek-v4`
 
-```text
-blian_deepseek_v4_pro
-→ deepseek-v4-pro
-```
+即可匹配。
 
-只有匹配分数达到阈值才展示规格；
-低于阈值直接显示“未找到可靠匹配”，不乱猜。
+同理：
 
+`blian_deepseek_v4_pro`
 
-## Models.dev
+可匹配：
 
-V5 使用：
+`deepseek-v4-pro`
 
-```text
-https://models.dev/models.json
-```
+但不会只拿 `v4` 这种单字段进行宽泛匹配，以避免错配。
 
-该数据源包含 provider-agnostic 模型元数据，例如：
+### 优先级
 
-- context
-- input limit
-- output limit
-- modalities
-- reasoning
-- tool_call
-- structured_output
-- knowledge
-- release_date
-- last_updated
-- official/model links
+如果配置了 New API 管理员 Secret：
 
-详情中会明确标记：
+`model_mapping`
+优先于名称后缀推断。
 
-```text
-Models.dev
-结构化模型库
-```
-
-如果数据中提供官方链接，还会单独显示：
-
-```text
-官方模型资料
-官方链接
-```
-
-
-# 推荐：开启 New API 管理员映射解析
-
-这是最关键的一步，尤其你的站点存在自定义模型名。
-
-Cloudflare Worker 中添加两个 Secret：
+Cloudflare Secret：
 
 ```bash
 npx wrangler secret put NEWAPI_ADMIN_TOKEN
 npx wrangler secret put NEWAPI_ADMIN_USER_ID
 ```
 
-`NEWAPI_ADMIN_TOKEN`：
+### Route
 
-New API：
+保持：
 
-```text
-个人设置
-→ 安全设置
-→ System Access Token
-```
+`newapi.mossao.com/pricing*`
 
-需要是具备管理员权限的 Access Token。
-
-`NEWAPI_ADMIN_USER_ID`：
-
-对应管理员账户的 New API User ID。
-
-
-## 安全设计
-
-这两个值：
-
-- 只存在 Cloudflare Worker Secret
-- 不写进 `src/index.js`
-- 不发送给浏览器
-- 不显示在 `/pricing-meta`
-- 浏览器只收到已经清洗后的：
-  - resolved_model
-  - 是否多映射
-  - 模型规格
-  - 信息来源
-
-不会返回：
-
-- 管理员 Token
-- Channel Key
-- 渠道 Base URL
-- 渠道 ID
-- 渠道名称
-
-
-## 管理员接口使用
-
-Worker 服务器端使用：
-
-```text
-GET /api/channel/
-GET /api/channel/:id
-```
-
-请求头：
-
-```text
-Authorization: Bearer <admin token>
-New-Api-User: <user id>
-```
-
-Worker 会缓存映射索引约 10 分钟，
-不会每点击一次详情都重新扫描所有渠道。
-
-
-## 如果不配置管理员 Secret
-
-V5 仍然能工作。
-
-它会：
-
-1. 使用本站调用名；
-2. 规范化 `_`、`/`、`.` 等分隔符；
-3. 尝试删除站点自定义前缀；
-4. 和 Models.dev 模型 ID 做高阈值匹配。
-
-例如：
-
-```text
-blian_deepseek_v4_pro
-```
-
-可生成候选：
-
-```text
-blian-deepseek-v4-pro
-deepseek-v4-pro
-v4-pro
-```
-
-然后优先匹配：
-
-```text
-deepseek/deepseek-v4-pro
-```
-
-但建议最终还是配置 New API 管理员 Secret，
-因为只有 `model_mapping` 才能准确知道本站自定义别名真实指向。
-
-
-# UI
-
-所有模型继续保留统一的：
-
-```text
-详情  [复制]
-```
-
-不会出现有的有详情、有的没有。
-
-详情仍是小型玻璃浮层，不跳转页面。
-
-详情内容新增：
-
-```text
-调用 ID
-上游模型（若能解析）
-资料模型
-
-模型名称
-上下文
-最大输入
-最大输出
-知识截止
-发布日期
-最近更新
-输入模态
-输出模态
-能力标签
-
-信息来源
-- New API /api/pricing
-- New API model_mapping（配置 Secret 后）
-- Models.dev
-- 官方模型资料（有链接时）
-```
-
-
-# Route
-
-保持原 Route：
-
-```text
-newapi.mossao.com/pricing*
-```
-
-因为该 Route 同时能够匹配：
-
-```text
-/pricing
-/pricing-meta
-```
-
-不需要重新添加。
-
-
-# 部署验证
+### 验证
 
 ```bash
 curl -sSI https://newapi.mossao.com/pricing \
@@ -274,40 +90,22 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-```text
-x-moss-pricing-skin: active-v5-source-backed-details
-```
+`x-moss-pricing-skin: active-v6-workspace-multisource-suffix-match`
 
-
-# 测试某个详情解析
-
-部署后：
+### 测试后缀匹配
 
 ```bash
 curl -sS \
-  'https://newapi.mossao.com/pricing-meta?model=blian_deepseek_v4_pro'
+'https://newapi.mossao.com/pricing-meta?model=tianyi_deepseek_v4'
 ```
 
-如果没配置管理员 Secret，也应该尽量通过后缀匹配：
+重点看：
 
-```text
-deepseek-v4-pro
-```
+- `resolution.suffix_candidates`
+- `source_matches`
+- `metadata`
+- `field_sources`
 
-如果配置了 Secret，则会优先根据实际 `model_mapping` 解析。
+如果数据源里有 `deepseek-v4`，应看到匹配查询为：
 
-
-# 关于来源可信度
-
-V5 不会把 Models.dev 伪装成模型厂商官方资料。
-
-界面会区分：
-
-```text
-本站模型目录
-本站映射
-结构化模型库
-官方链接
-```
-
-如果找不到可靠匹配，就不展示猜出来的上下文/能力数据。
+`deepseek-v4`
