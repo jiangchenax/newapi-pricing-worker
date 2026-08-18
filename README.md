@@ -1,199 +1,252 @@
-# New API Pricing Worker V7.1
+# New API Pricing Worker V7.2
 
-V7.1 一次处理四个问题。
+V7.2 专门修复 V7.1 的图标显示问题，同时完整保留 V7.1 的：
 
-## 1. 三个 Tab 背景统一
-
-详情内部统一使用同一个 `detail-surface`：
-
-- 标题区
-- Tab 区
-- Tab 内容区
-
-Tab 整栏不再单独使用一块白底。
-只有当前选中的 Tab 有很轻的局部高亮。
-
-
-## 2. 详情只保留一个滚动容器
-
-以前：
-
-`model-detail-popover`
-→ `detail-panel-scroll`
-→ 双重高度 / 双重滚动
-
-现在：
-
-`model-detail-popover`
-→ 唯一滚动容器
-
-`detail-panel-scroll`
-只负责结构，不再滚动。
-
-每次：
-
-- 异步详情加载完成
-- 性能数据加载完成
-- 切换概览 / 性能 / API
-
-都会重新计算详情框位置和可用高度。
-
-详情底部额外保留 34px 安全空间，避免最后一块内容滑不到。
-
-
-## 3. 主列表 24h 状态和性能 Tab 使用同一接口
-
-不再用原 New API DOM 中抓到的成功率 / 延迟 / TPS 作为主列表状态。
-
-现在统一：
-
-`GET /api/perf-metrics?model=<model>&hours=24`
-
-同一份数据进入：
-
-`summarizePerfResult()`
-
-然后同时用于：
-
-- 模型列表成功率
-- 模型列表延迟
-- 模型列表吞吐量
-- 性能 Tab 顶部三个统计卡
-
-因此不会再出现：
-
-主列表：暂无 24h 状态
-性能 Tab：有 TPS / 延迟 / 成功率
-
-这种矛盾。
-
-### 加载策略
-
-不会页面打开瞬间并发 71 个请求。
-
-- IntersectionObserver 优先加载当前可见模型
-- 上下 420px 范围提前加载
-- 最大并发 5
-- 1.8 秒后后台慢慢补齐其余模型
-- `loadPerfMetrics()` 保留浏览器内 Promise 缓存
-
-
-## 4. 图标系统重做
-
-### 先判断原 New API 图标是不是“真图标”
-
-现在只有以下内容才视为原生有效图标：
-
-- `<img>`
-- `<svg>`
-- `<picture>`
-- `<canvas>`
-- URL background / mask
-
-纯文字：
-
-- A
-- B
-- C
-- AI
-- 首字母 Avatar
-
-全部视为“占位符”，继续进入图标补全链。
-
-
-### 图标解析链
-
-1. New API 真正的原生图标
-2. New API `model.icon / vendor_icon` 文本提示
-3. 模型名 / Provider 品牌识别
-4. Lobe Icons Static SVG
-5. Simple Icons 彩色 SVG
-6. 本地品牌文字 fallback
-
-浏览器统一请求：
-
-`/pricing-icon/<brand>.svg`
-
-Worker 服务器端解析，不让前端直接访问第三方 CDN。
-
-
-### Lobe Icons
-
-优先尝试：
-
-`<slug>-color.svg`
-
-失败后：
-
-`<slug>.svg`
-
-
-### Simple Icons
-
-Lobe 没有时再使用 Simple Icons 彩色 CDN。
-
-
-### 已增加识别
-
-包括但不限于：
-
-- Agnes
-- DeepSeek
-- OpenAI / GPT
-- Claude / Anthropic
-- Gemini / Google
-- Gemma
-- Qwen
-- ChatGLM / Zhipu
-- Kimi / Moonshot
-- MiniMax
-- Grok / xAI
-- Meta / Llama
-- Mistral
-- Doubao
-- Wenxin / Baidu
-- MiMo / Xiaomi
-- Yi
-- Cohere
-- Ollama
-- Hunyuan
-- Groq
-- OpenRouter
-- Perplexity
-- Hugging Face
-- NVIDIA
-- Cerebras
-- SambaNova
-- Together
-- Fireworks
-- Replicate
-- SiliconCloud
-- Bedrock / AWS
-- Azure AI
-
-
-## 保留 V7
-
-- 概览 / 性能 / API 三 Tab
+- 三个 Tab
+- 单滚动容器
+- 主列表 / 性能 Tab 统一 24h 性能数据
 - 严格模型资料匹配
-- agnes-2.0-flash 不会误配 Gemini
-- tianyi_deepseek_v4 → deepseek-v4
-- Models.dev
-- OpenRouter
-- LiteLLM
+- Models.dev / OpenRouter / LiteLLM
 - New API model_mapping
 - 24h 折线图
-- 原生彩色图标优先
 
 
-## Route
+# 一、修复“破图 + fallback 同时显示”
+
+V7.1 的问题：
+
+```text
+fallback 字母底板
++
+<img 品牌 SVG>
+```
+
+两个节点会同时存在于界面。
+
+如果图片失败：
+- 可能看到浏览器破图标记
+- 下面还露出 AG / NV 等 fallback
+
+如果图片透明：
+- 可能看到 NVIDIA Logo
+- 后面仍透出紫色 fallback 背景
+
+
+## V7.2：单可见状态
+
+远程品牌 `<img>` 初始状态：
+
+```text
+visibility: hidden
+opacity: 0
+```
+
+只有浏览器成功 `load` 后：
+
+1. 图片设置 `data-loaded=true`
+2. 品牌图片变为可见
+3. fallback 设置 hidden
+4. host 状态改为 `verified`
+
+如果 `error`：
+
+1. 图片节点直接 remove
+2. fallback 保持显示
+
+所以任意时刻用户只会看到：
+
+```text
+New API 真 Logo
+或
+已验证品牌 Logo
+或
+fallback
+```
+
+不会再叠加。
+
+
+# 二、Worker 不再“HTTP 200 就当图标”
+
+每个外部图标响应都经过正文校验：
+
+- HTTP 必须成功
+- 不允许 `text/html`
+- 正文必须实际包含 `<svg ...>`
+- 正文结尾必须有 `</svg>`
+- 最大 1 MiB
+- HTML 错误页直接丢弃
+
+只有验证通过才由 Worker 返回：
+
+```text
+Content-Type: image/svg+xml
+X-Content-Type-Options: nosniff
+```
+
+
+# 三、图标来源链
+
+## 1. New API 真正原生图标
+
+只有 `img / svg / picture / canvas / URL graphic`
+才视为有效。
+
+A / B / C / 首字母文本仍视为占位符。
+
+
+## 2. Lobe Icons / unpkg
+
+按 Lobe 官方静态 SVG CDN：
+
+```text
+https://unpkg.com/@lobehub/icons-static-svg@latest/icons/[SLUG].svg
+```
+
+每个品牌依次尝试：
+
+```text
+slug-color.svg
+slug.svg
+```
+
+
+## 3. Lobe Icons / npmmirror
+
+作为第二 CDN：
+
+```text
+https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/[SLUG].svg
+```
+
+
+## 4. Simple Icons 彩色 CDN
+
+```text
+https://cdn.simpleicons.org/[SLUG]
+```
+
+
+## 5. Simple Icons jsDelivr
+
+```text
+https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/[SLUG].svg
+```
+
+
+## 6. 本地 fallback
+
+所有外部来源失败才显示：
+
+- AG
+- DS
+- NV
+- OA
+- 或模型名稳定生成的两字母 fallback
+
+fallback 使用蓝紫柔和底色。
+
+真实 Logo 不使用这个底板。
+
+
+# 四、增加诊断 Header
+
+测试：
+
+```bash
+curl -sSI \
+https://newapi.mossao.com/pricing-icon/agnes.svg
+```
+
+成功时可以看到：
+
+```text
+X-MOSS-Icon-Source: lobe-unpkg
+X-MOSS-Icon-Slug: agnes
+X-MOSS-Icon-Key: agnes
+```
+
+如果第一个 CDN 失败而第二个成功，可能是：
+
+```text
+X-MOSS-Icon-Source: lobe-npmmirror
+```
+
+Simple Icons 则可能显示：
+
+```text
+X-MOSS-Icon-Source: simpleicons-color
+```
+
+或：
+
+```text
+X-MOSS-Icon-Source: simpleicons-jsdelivr
+```
+
+所有来源都没有：
+
+```text
+HTTP 404
+X-MOSS-Icon-Source: fallback
+```
+
+浏览器不会显示破图，因为失败 `<img>` 会被移除。
+
+
+# 五、重点品牌候选
+
+Agnes：
+
+```text
+agnes
+agnesai
+```
+
+NVIDIA：
+
+```text
+nvidia
+```
+
+DeepSeek：
+
+```text
+deepseek
+```
+
+OpenAI：
+
+```text
+openai
+chatgpt
+```
+
+Gemini：
+
+```text
+gemini
+```
+
+Qwen：
+
+```text
+qwen
+```
+
+以及 V7.1 既有的大量品牌映射。
+
+
+# Route
 
 保持：
 
-`newapi.mossao.com/pricing*`
+```text
+newapi.mossao.com/pricing*
+```
 
 
-## 验证
+# 验证 Worker
 
 ```bash
 curl -sSI https://newapi.mossao.com/pricing \
@@ -202,23 +255,22 @@ curl -sSI https://newapi.mossao.com/pricing \
 
 应返回：
 
-`x-moss-pricing-skin: active-v7.1-unified-tabs-scroll-perf-icons`
-
-
-## 单独测试图标
-
-```bash
-curl -sSI \
-  https://newapi.mossao.com/pricing-icon/agnes.svg
+```text
+x-moss-pricing-skin: active-v7.2-verified-single-state-icons
 ```
 
-以及：
+
+# 建议部署后先测试这三个
 
 ```bash
-curl -sSI \
-  https://newapi.mossao.com/pricing-icon/deepseek.svg
+curl -sSI https://newapi.mossao.com/pricing-icon/agnes.svg
+curl -sSI https://newapi.mossao.com/pricing-icon/nvidia.svg
+curl -sSI https://newapi.mossao.com/pricing-icon/deepseek.svg
 ```
 
-如果解析成功，应返回：
+重点看：
 
-`content-type: image/svg+xml`
+- HTTP 是否 200
+- `content-type`
+- `x-moss-icon-source`
+- `x-moss-icon-slug`
